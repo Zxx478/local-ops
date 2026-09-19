@@ -1,0 +1,7 @@
+# local-ops backend — Windows 高并发控制面板
+# 运行依赖（仅平台能力库 + Web 框架）：
+fastapi>=0.110
+uvicorn[standard]>=0.27
+psutil>=5.9
+pillow>=10.0
+python-multipart>=0.0.9   # FastAPI 接收 multipart 图标上传

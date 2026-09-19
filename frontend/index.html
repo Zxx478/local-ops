@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="theme-ops" style="color-scheme: dark;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0e1a" />
+  <meta name="description" content="local-ops · 本地服务与批处理任务总控台（Windows 版）" />
+  <title>local-ops · 本地总控台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0e1a'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%2338bdf8'%3E%E2%97%88%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/themes/ops.css" />
+  <!-- 首屏关键模块：提前并行预取，消除 ES Module 两跳瀑布（交互模块 commandPalette/logCenter/settings 改为按需动态加载，不在此预取） -->
+  <link rel="modulepreload" href="js/util.js" />
+  <link rel="modulepreload" href="js/api.js" />
+  <link rel="modulepreload" href="js/state.js" />
+  <link rel="modulepreload" href="js/sparkline.js" />
+  <link rel="modulepreload" href="js/cards.js" />
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主内容</a>
+
+  <!-- 顶部栏 -->
+  <header class="topbar" role="banner">
+    <div class="topbar__brand">
+      <span class="topbar__logo" aria-hidden="true">◈</span>
+      <div class="topbar__titles">
+        <h1 class="topbar__title">local-ops</h1>
+        <p class="topbar__subtitle">本地服务与批处理总控台</p>
+      </div>
+    </div>
+
+    <div class="topbar__status" id="serverStatus" aria-live="polite">
+      <span class="dot" data-state="unknown" aria-hidden="true"></span>
+      <span class="topbar__status-text">连接中…</span>
+    </div>
+
+    <div class="topbar__actions">
+      <button class="btn btn--ghost" id="btnCommand" type="button" aria-label="打开命令面板（Ctrl K）" title="命令面板 (Ctrl+K)">
+        <span class="btn__icon" aria-hidden="true">⌘</span><span class="btn__label">命令</span>
+      </button>
+      <button class="btn btn--ghost" id="btnLogs" type="button" aria-label="打开日志中心（Ctrl J）" title="日志中心 (Ctrl+J)">
+        <span class="btn__icon" aria-hidden="true">≣</span><span class="btn__label">日志</span>
+      </button>
+      <button class="btn btn--primary" id="btnSettings" type="button" aria-label="打开设置中心">
+        <span class="btn__icon" aria-hidden="true">⚙</span><span class="btn__label">设置</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 全局 KPI 条 -->
+  <section class="kpi-strip" aria-label="集群概览指标">
+    <article class="kpi" id="kpiRunning">
+      <span class="kpi__label">运行中</span>
+      <span class="kpi__value" data-empty="0">0</span>
+      <span class="kpi__unit">个应用</span>
+    </article>
+    <article class="kpi" id="kpiCpu">
+      <span class="kpi__label">CPU 负载</span>
+      <span class="kpi__value" data-empty="0%">0%</span>
+      <svg class="kpi__spark" data-spark="cpu" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </article>
+    <article class="kpi" id="kpiMem">
+      <span class="kpi__label">内存占用</span>
+      <span class="kpi__value" data-empty="0%">0%</span>
+      <svg class="kpi__spark" data-spark="mem" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </article>
+    <article class="kpi" id="kpiPorts">
+      <span class="kpi__label">已监听端口</span>
+      <span class="kpi__value" data-empty="0">0</span>
+      <span class="kpi__unit">个</span>
+    </article>
+  </section>
+
+  <!-- 主内容 -->
+  <main id="main" class="board" tabindex="-1">
+    <div class="board__head">
+      <h2 class="board__title">我的应用</h2>
+      <div class="board__tools">
+        <input
+          type="search"
+          id="filterInput"
+          class="input input--search"
+          placeholder="筛选应用名称…"
+          aria-label="按名称筛选应用"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="btn btn--primary" id="btnAddApp" type="button">
+          <span class="btn__icon" aria-hidden="true">+</span><span class="btn__label">添加应用</span>
+        </button>
+      </div>
+    </div>
+
+    <section id="appGrid" class="app-grid" aria-live="polite" aria-label="应用卡片列表"></section>
+
+    <div id="emptyState" class="empty-state" hidden>
+      <span class="empty-state__icon" aria-hidden="true">📭</span>
+      <h3 class="empty-state__title">还没有应用</h3>
+      <p class="empty-state__text">点击右上角「设置 → + 添加应用」，或按 <kbd>Ctrl</kbd>+<kbd>K</kbd> 快速添加。</p>
+      <button class="btn btn--primary" id="btnEmptyAdd" type="button">添加第一个应用</button>
+    </div>
+  </main>
+
+  <!-- 命令面板 -->
+  <div class="overlay" id="commandOverlay" hidden>
+    <div class="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+      <input
+        type="text"
+        id="commandInput"
+        class="input palette__input"
+        placeholder="搜索应用或命令…"
+        aria-label="命令搜索"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <ul id="commandList" class="palette__list" role="listbox" aria-label="命令结果"></ul>
+      <p class="palette__hint">↑↓ 选择 · <kbd>Enter</kbd> 执行 · <kbd>Esc</kbd> 关闭</p>
+    </div>
+  </div>
+
+  <!-- 日志中心 -->
+  <div class="overlay overlay--right" id="logOverlay" hidden>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-label="日志中心">
+      <header class="drawer__head">
+        <h2 class="drawer__title">日志中心</h2>
+        <button class="icon-btn" id="logClose" type="button" aria-label="关闭日志中心">✕</button>
+      </header>
+      <div class="drawer__body">
+        <label class="field">
+          <span class="field__label">应用</span>
+          <select id="logAppSelect" class="select" aria-label="选择查看日志的应用"></select>
+        </label>
+        <div class="log-tabs" role="tablist" aria-label="日志类型">
+          <button class="log-tab is-active" role="tab" aria-selected="true" data-tab="tail" id="logTabTail" type="button">实时日志</button>
+          <button class="log-tab" role="tab" aria-selected="false" data-tab="diag" id="logTabDiag" type="button">诊断信息</button>
+        </div>
+        <pre id="logTail" class="log-view" aria-live="polite" tabindex="0">等待日志…</pre>
+        <div id="logDiag" class="diag-view" hidden></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 设置中心 -->
+  <div class="overlay" id="settingsOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="设置中心">
+      <header class="modal__head">
+        <h2 class="modal__title">设置中心</h2>
+        <button class="icon-btn" id="settingsClose" type="button" aria-label="关闭设置中心">✕</button>
+      </header>
+      <div class="modal__body">
+        <nav class="tabs" role="tablist" aria-label="设置分区">
+          <button class="tab is-active" role="tab" aria-selected="true" data-tab="apps" id="tabApps" type="button">应用管理</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="prefs" id="tabPrefs" type="button">偏好</button>
+        </nav>
+
+        <section class="tab-panel" data-panel="apps" aria-labelledby="tabApps">
+          <div class="apps-manager">
+            <ul id="appListEditor" class="apps-editor" aria-label="已配置应用"></ul>
+            <button class="btn btn--primary btn--block" id="btnNewApp" type="button">
+              <span class="btn__icon" aria-hidden="true">+</span><span class="btn__label">+ 添加应用</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="prefs" aria-labelledby="tabPrefs" hidden>
+          <label class="field">
+            <span class="field__label">主题</span>
+            <select id="prefTheme" class="select" aria-label="选择界面主题">
+              <option value="ops">深空蓝黑（ops）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">轮询间隔</span>
+            <input
+              type="number" id="prefPoll" class="input" min="500" max="10000" step="100"
+              inputmode="numeric" aria-label="状态轮询间隔（毫秒）"
+            />
+            <span class="field__hint">毫秒。默认 2200，值越小刷新越快但更耗资源。</span>
+          </label>
+          <label class="field field--row">
+            <span class="field__label">开机自启</span>
+            <input type="checkbox" id="prefAutostart" class="checkbox" />
+          </label>
+        </section>
+      </div>
+      <footer class="modal__foot">
+        <span id="settingsMsg" class="modal__msg" aria-live="polite"></span>
+        <button class="btn btn--primary" id="btnSavePrefs" type="button">保存偏好</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 应用编辑弹窗（添加/编辑） -->
+  <div class="overlay" id="appEditorOverlay" hidden>
+    <div class="modal modal--sm" role="dialog" aria-modal="true" aria-label="应用编辑">
+      <header class="modal__head">
+        <h2 class="modal__title" id="appEditorTitle">添加应用</h2>
+        <button class="icon-btn" id="appEditorClose" type="button" aria-label="关闭">✕</button>
+      </header>
+      <form id="appEditorForm" class="modal__body" novalidate>
+        <input type="hidden" id="fId" />
+        <label class="field">
+          <span class="field__label">名称 <span class="req">*</span></span>
+          <input type="text" id="fName" class="input" required autocomplete="off" spellcheck="false" placeholder="例如：我的博客…" />
+          <span class="field__error" data-error-for="fName"></span>
+        </label>
+        <label class="field">
+          <span class="field__label">启动命令 <span class="req">*</span></span>
+          <input type="text" id="fCommand" class="input" required autocomplete="off" spellcheck="false" placeholder="例如：npm run dev…" />
+          <span class="field__error" data-error-for="fCommand"></span>
+        </label>
+        <label class="field">
+          <span class="field__label">工作目录</span>
+          <div class="field__combo">
+            <input type="text" id="fCwd" class="input" autocomplete="off" spellcheck="false" placeholder="D:\projects\my-blog…" />
+            <button class="btn btn--ghost" id="fBrowse" type="button" aria-label="浏览目录">浏览…</button>
+          </div>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span class="field__label">端口（可选）</span>
+            <input type="number" id="fPort" class="input" min="1" max="65535" inputmode="numeric" autocomplete="off" placeholder="3000" />
+          </label>
+          <label class="field">
+            <span class="field__label">类型</span>
+            <select id="fType" class="select" aria-label="应用类型">
+              <option value="service">长期服务</option>
+              <option value="batch">一次性批处理</option>
+            </select>
+          </label>
+        </div>
+        <footer class="modal__foot">
+          <span id="appEditorMsg" class="modal__msg" aria-live="polite"></span>
+          <button class="btn btn--primary" id="appEditorSubmit" type="submit">保存</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- 目录浏览弹窗 -->
+  <div class="overlay" id="browseOverlay" hidden>
+    <div class="modal modal--sm" role="dialog" aria-modal="true" aria-label="目录浏览">
+      <header class="modal__head">
+        <h2 class="modal__title">选择工作目录</h2>
+        <button class="icon-btn" id="browseClose" type="button" aria-label="关闭目录浏览">✕</button>
+      </header>
+      <div class="modal__body">
+        <nav class="breadcrumb" id="browseCrumb" aria-label="当前路径"></nav>
+        <ul id="browseList" class="browse-list" aria-label="目录列表" role="listbox"></ul>
+      </div>
+      <footer class="modal__foot">
+        <span id="browsePath" class="modal__msg" aria-live="polite"></span>
+        <button class="btn btn--primary" id="browseSelect" type="button">选择此目录</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 确认弹窗 -->
+  <div class="overlay" id="confirmOverlay" hidden>
+    <div class="modal modal--sm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+      <div class="modal__body">
+        <h2 class="modal__title" id="confirmTitle">确认操作</h2>
+        <p id="confirmText" class="confirm__text">确定要执行该操作吗？</p>
+      </div>
+      <footer class="modal__foot">
+        <button class="btn btn--ghost" id="confirmCancel" type="button">取消</button>
+        <button class="btn btn--danger" id="confirmOk" type="button">确定</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 轻提示容器 -->
+  <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="false"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
