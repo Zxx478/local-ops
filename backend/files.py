@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import urllib.request
+from io import BytesIO
 from typing import Optional
 
 from PIL import Image
@@ -89,7 +90,7 @@ def save_icon(data_dir: str, app_id: str, filename: str, content: bytes) -> str:
         raise ValueError("不支持的图片格式")
     # 用 Pillow 重编码为 PNG（剥离脚本/元数据，防嵌套载荷）
     try:
-        img = Image.open(__import__("io").BytesIO(content))
+        img = Image.open(BytesIO(content))
         img = img.convert("RGBA")
     except Exception:
         raise ValueError("图片解码失败")

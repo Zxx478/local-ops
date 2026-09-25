@@ -142,9 +142,9 @@ class ConfigManager:
             "command": data["command"],
             "cwd": data.get("cwd", "") or "",
             "port": data.get("port"),
-                "type": data.get("type", "service"),
-                "icon": data.get("icon"),
-            }
+            "type": data.get("type", "service"),
+            "icon": data.get("icon"),
+        }
         self._atomic_save()
         return app_id
 

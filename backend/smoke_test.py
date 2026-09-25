@@ -2,7 +2,7 @@
 仅用标准库（subprocess + http.client），覆盖 health/state/browse/安全中间件/
 增删改查/启动停止/日志/诊断/图标上传/设置，以及 ConfigManager 单元测试。
 """
-import subprocess, http.client, json, time, sys, os, tempfile, shutil, signal
+import subprocess, http.client, json, time, sys, os, tempfile
 from io import BytesIO
 from PIL import Image
 
@@ -125,7 +125,7 @@ def main():
             sc, _, _ = cl.req("POST", f"/api/apps/{app_id}/start", cookie=cl.cookie,
                               headers={"Sec-Fetch-Site": "same-origin"})
             time.sleep(1.5)
-            sc2, _, body = cl.req("GET", "/api/state", cookie=cl.cookie, headers={"Sec-Fetch-Site": "same-origin"})
+            _, _, body = cl.req("GET", "/api/state", cookie=cl.cookie, headers={"Sec-Fetch-Site": "same-origin"})
             running = next((a for a in body.get("apps", []) if a["id"] == app_id), {}).get("running")
             rec("start_app", sc == 200 and running is True, f"start={sc} running={running}")
 
@@ -144,7 +144,7 @@ def main():
             sc, _, _ = cl.req("POST", f"/api/apps/{app_id}/stop", cookie=cl.cookie,
                               headers={"Sec-Fetch-Site": "same-origin"})
             time.sleep(1.0)
-            sc2, _, body = cl.req("GET", "/api/state", cookie=cl.cookie, headers={"Sec-Fetch-Site": "same-origin"})
+            _, _, body = cl.req("GET", "/api/state", cookie=cl.cookie, headers={"Sec-Fetch-Site": "same-origin"})
             running = next((a for a in body.get("apps", []) if a["id"] == app_id), {}).get("running")
             rec("stop_app", sc == 200 and running is False, f"stop={sc} running={running}")
 

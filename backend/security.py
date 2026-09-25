@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import urllib.parse
+from typing import Optional
 
 COOKIE_NAME = "lo_sid"
 
