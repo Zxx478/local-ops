@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Optional
 
 import psutil
 
@@ -26,7 +27,7 @@ def invalidate() -> None:
         _cache["ts"] = 0.0
 
 
-def _listening_ports() -> dict[int, set[int]]:
+def listening_ports() -> dict[int, set[int]]:
     """端口 -> 监听 PID 集合（仅 TCP）。"""
     mapping: dict[int, set[int]] = {}
     try:
@@ -50,50 +51,53 @@ def _kpis(port_count: int) -> dict:
     return {"cpu": round(cpu), "mem": round(mem), "ports": port_count}
 
 
+def describe_app(a: dict, rt: Optional[dict], pm: ProcessManager, port_map: dict[int, set[int]]) -> dict:
+    """构造单个应用的运行快照（/api/state 与 /api/apps/:id/diagnostics 共用）。
+
+    rt 为 None 表示未运行；端口归属 = 进程树实际监听端口 + 配置端口兜底展示。
+    """
+    running = rt is not None
+    ports: list = []
+    if running:
+        pids = pm.owner_pids(a["id"])
+        ports = sorted({p for p, pids_ in port_map.items() if pids_ & pids})
+        # 配置端口兜底展示（仅在运行时）
+        if a.get("port") and a["port"] not in ports:
+            ports.append(a["port"])
+            ports.sort()
+    return {
+        "id": a["id"],
+        "name": a["name"],
+        "command": a["command"],
+        "cwd": a.get("cwd", ""),
+        "port": a.get("port"),
+        "type": a.get("type", "service"),
+        "icon": a.get("icon"),
+        "running": running,
+        "pid": rt["pid"] if running else None,
+        "startedAt": rt["started_at"] if running else None,
+        "project": detect_project(a.get("cwd", "")),
+        "owner": attribute_chain(rt["pid"]) if running else "—",
+        "ports": ports,
+    }
+
+
 def build_state(config: ConfigManager, pm: ProcessManager) -> dict:
     apps_cfg = config.list_apps()
-    port_map = _listening_ports()
-    all_listening = set(port_map.keys())
+    port_map = listening_ports()
 
     apps = []
     running_count = 0
     for a in apps_cfg:
-        app_id = a["id"]
         # 用户自建应用：运行态来自 runtime.json（三重校验）
-        rt = pm.get_runtime(app_id)
-        running = rt is not None
-        if running:
+        rt = pm.get_runtime(a["id"])
+        if rt is not None:
             running_count += 1
-        owner_pids = pm.owner_pids(app_id) if running else set()
-        if running and owner_pids:
-            ports = sorted({p for p, pids in port_map.items() if pids & owner_pids})
-        else:
-            ports = []
-        # 配置端口兜底展示（仅在运行时）
-        if running and a.get("port") and a["port"] not in ports:
-            ports.append(a["port"])
-            ports.sort()
-
-        owner = attribute_chain(rt["pid"]) if running else "—"
-        apps.append({
-            "id": app_id,
-            "name": a["name"],
-            "command": a["command"],
-            "cwd": a.get("cwd", ""),
-            "port": a.get("port"),
-            "type": a.get("type", "service"),
-            "icon": a.get("icon"),
-            "running": running,
-            "pid": rt["pid"] if running else None,
-            "startedAt": rt["started_at"] if running else None,
-            "project": detect_project(a.get("cwd", "")),
-            "owner": owner,
-            "ports": ports,
-        })
+        apps.append(describe_app(a, rt, pm, port_map))
 
     return {
         "apps": apps,
-        "kpis": _kpis(len(all_listening)),
+        "kpis": _kpis(len(port_map)),
         "runningCount": running_count,
     }
 

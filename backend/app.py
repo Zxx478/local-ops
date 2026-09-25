@@ -14,8 +14,8 @@ from fastapi.staticfiles import StaticFiles
 
 from models import AppIn, AppPatch, SettingsIn
 from config import ConfigManager
-from processes import ProcessManager, attribute_chain, detect_project
-from state import get_state, invalidate, _listening_ports
+from processes import ProcessManager
+from state import get_state, invalidate, listening_ports, describe_app
 import files as files_mod
 from security import SecurityMiddleware
 
@@ -142,29 +142,11 @@ def create_app(data_dir: str, port: int, open_browser: bool = True) -> FastAPI:
         if not app:
             return _not_found()
         rt = pm.get_runtime(app_id)
-        running = rt is not None
-        ports = []
-        if running:
-            pm_pids = pm.owner_pids(app_id)
-            port_map = _listening_ports()
-            ports = sorted({p for p, pids in port_map.items() if pids & pm_pids})
-            if app.get("port") and app["port"] not in ports:
-                ports.append(app["port"])
-        return {
-            "id": app_id,
-            "name": app["name"],
-            "type": app.get("type", "service"),
-            "project": detect_project(app.get("cwd", "")),
-            "running": running,
-            "pid": rt["pid"] if running else None,
-            "startedAt": rt["started_at"] if running else None,
-            "owner": attribute_chain(rt["pid"]) if running else "—",
-            "ports": ports,
-            "cwd": app.get("cwd", ""),
-            "command": app["command"],
-            "tripleVerified": pm.token_verified(app_id) if running else False,
-            "ownerMismatch": pm.owner_mismatch(app_id) if running else False,
-        }
+        # 与 /api/state 共用同一份快照构造逻辑，另附三重校验等诊断专有字段
+        snap = describe_app(app, rt, pm, listening_ports())
+        snap["tripleVerified"] = pm.token_verified(app_id) if rt else False
+        snap["ownerMismatch"] = pm.owner_mismatch(app_id) if rt else False
+        return snap
 
     @router.get("/browse")
     async def browse(path: str = ""):
