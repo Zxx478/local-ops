@@ -51,6 +51,27 @@ def _kpis(port_count: int) -> dict:
     return {"cpu": round(cpu), "mem": round(mem), "ports": port_count}
 
 
+# owner 标签缓存：pid -> (create_time, label)。进程生命周期内归属链稳定
+# （谁启动的不变），缓存避免每次轮询都沿 PPID 链逐级探测；create_time
+# 参与匹配防 PID 复用。容量上限防长期运行膨胀。
+_OWNER_CACHE_MAX = 256
+_owner_cache: dict[int, tuple[float, str]] = {}
+
+
+def cached_owner(pid: int, ctime: Optional[float]) -> str:
+    """attribute_chain 的进程生命周期级缓存。"""
+    if ctime is None:
+        return attribute_chain(pid)
+    hit = _owner_cache.get(pid)
+    if hit is not None and hit[0] == ctime:
+        return hit[1]
+    label = attribute_chain(pid)
+    if len(_owner_cache) >= _OWNER_CACHE_MAX:
+        _owner_cache.clear()
+    _owner_cache[pid] = (ctime, label)
+    return label
+
+
 def describe_app(a: dict, rt: Optional[dict], pm: ProcessManager, port_map: dict[int, set[int]]) -> dict:
     """构造单个应用的运行快照（/api/state 与 /api/apps/:id/diagnostics 共用）。
 
@@ -59,7 +80,8 @@ def describe_app(a: dict, rt: Optional[dict], pm: ProcessManager, port_map: dict
     running = rt is not None
     ports: list = []
     if running:
-        pids = pm.owner_pids(a["id"])
+        # 复用调用方已通过 _alive 校验的 rt：每应用每轮只做一次存活/token 校验
+        pids = pm.owner_pids(a["id"], rt=rt)
         ports = sorted({p for p, pids_ in port_map.items() if pids_ & pids})
         # 配置端口兜底展示（仅在运行时）
         if a.get("port") and a["port"] not in ports:
@@ -77,7 +99,7 @@ def describe_app(a: dict, rt: Optional[dict], pm: ProcessManager, port_map: dict
         "pid": rt["pid"] if running else None,
         "startedAt": rt["started_at"] if running else None,
         "project": detect_project(a.get("cwd", "")),
-        "owner": attribute_chain(rt["pid"]) if running else "—",
+        "owner": cached_owner(rt["pid"], rt.get("create_time")) if running else "—",
         "ports": ports,
     }
 

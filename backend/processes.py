@@ -228,9 +228,14 @@ class ProcessManager:
             return rt
         return None
 
-    def owner_pids(self, app_id: str) -> set[int]:
-        """返回应用进程树（自身 + 全部子孙）的 PID 集合，用于端口归属。"""
-        rt = self.get_runtime(app_id)
+    def owner_pids(self, app_id: str, rt: Optional[dict] = None) -> set[int]:
+        """返回应用进程树（自身 + 全部子孙）的 PID 集合，用于端口归属。
+
+        可传入已通过 _alive 校验的 rt（如 describe_app 已取过的运行态），
+        避免重复执行存活 + token 环境读取（Windows 上 environ 读取开销较高）。
+        """
+        if rt is None:
+            rt = self.get_runtime(app_id)
         if not rt:
             return set()
         pids = {rt["pid"]}
