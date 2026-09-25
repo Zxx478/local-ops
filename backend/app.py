@@ -6,6 +6,7 @@
 import os
 import secrets
 import webbrowser
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, APIRouter, UploadFile, File, Form, Request, Response
@@ -26,11 +27,19 @@ START_BAT = str(_HERE / "start.bat")
 
 
 def create_app(data_dir: str, port: int, open_browser: bool = True) -> FastAPI:
-    app = FastAPI(title="local-ops", version="1.0.0")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if open_browser:
+            try:
+                webbrowser.open(f"http://127.0.0.1:{port}/")
+            except Exception:
+                pass
+        yield
+
+    app = FastAPI(title="local-ops", version="1.0.0", lifespan=lifespan)
     app.state.session_token = secrets.token_hex(32)
     app.state.port = port
     app.state.data_dir = data_dir
-    app.state.open_browser = open_browser
 
     config = ConfigManager(data_dir)
     pm = ProcessManager(data_dir, config)
@@ -54,7 +63,7 @@ def create_app(data_dir: str, port: int, open_browser: bool = True) -> FastAPI:
         return get_state(config, pm)
 
     @router.post("/apps")
-    async def create_app(req: Request):
+    async def apps_create(req: Request):
         try:
             payload = AppIn(**await req.json())
         except Exception as e:
@@ -211,13 +220,5 @@ def create_app(data_dir: str, port: int, open_browser: bool = True) -> FastAPI:
     # 前端静态（同源托管，满足本地信任边界）
     if FRONTEND_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-
-    @app.on_event("startup")
-    async def _startup():
-        if app.state.open_browser:
-            try:
-                webbrowser.open(f"http://127.0.0.1:{port}/")
-            except Exception:
-                pass
 
     return app

@@ -18,20 +18,15 @@ DEFAULT_DATA_DIR = os.path.join(
 
 
 def find_free_port(preferred: int) -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-    try:
-        s.bind(("127.0.0.1", preferred))
-        port = s.getsockname()[1]
-        return port
-    except OSError:
-        s.close()
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        return port
-    finally:
-        s.close()
+    """优先绑定 preferred，被占用则回退随机空闲端口。"""
+    for port in (preferred, 0):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", port))
+                return s.getsockname()[1]
+        except OSError:
+            continue
+    raise RuntimeError("无法绑定任何回环端口")
 
 
 def acquire_instance_lock(data_dir: str):
