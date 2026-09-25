@@ -65,4 +65,6 @@ venv\Scripts\python -m pip install -r requirements.txt
 - [`README_WINDOWS.md`](README_WINDOWS.md)：完整 Windows 开发指南与移植对照
 - [`backend/OVERVIEW.md`](backend/OVERVIEW.md)：后端模块说明
 - [`frontend/OVERVIEW.md`](frontend/OVERVIEW.md)：前端模块说明
-- 另有 `REVIEW_REPORT.md` / `OPTIMIZATION_REPORT.md` 记录审查与优化过程
+- 另有 [`backend/REVIEW_REPORT.md`](backend/REVIEW_REPORT.md) /
+  [`frontend/REVIEW_REPORT.md`](frontend/REVIEW_REPORT.md) /
+  [`frontend/OPTIMIZATION_REPORT.md`](frontend/OPTIMIZATION_REPORT.md) 记录审查与优化过程

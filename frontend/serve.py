@@ -4,8 +4,8 @@
 
 用法：
     python serve.py [port]
-默认端口 8080。仅用于本地预览；生产环境请由后端 server.py 托管 frontend/
-并复用其安全中间件（Host 校验、同源 Cookie、无 CORS）。
+默认端口 8080。仅用于本地预览；生产环境请由后端（backend/run.py 启动的
+FastAPI 应用）托管 frontend/ 并复用其安全中间件（Host 校验、同源 Cookie、无 CORS）。
 
 缓存策略（按扩展名）：
     .html        → no-cache            （始终重新校验，部署后立即生效）
