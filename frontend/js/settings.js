@@ -1,5 +1,5 @@
 // settings.js — 设置中心：应用管理 / 偏好 / 应用编辑 / 目录树浏览
-import { $, el, openOverlay, closeOverlay, toast, escapeHtml } from "./util.js";
+import { $, $$, el, openOverlay, closeOverlay, toast, escapeHtml } from "./util.js";
 import { store, refresh, setPollInterval } from "./state.js";
 import { API } from "./api.js";
 
@@ -75,7 +75,12 @@ function renderAppEditorList() {
 async function removeApp(app) {
   const ok = await confirmDialog(`确定删除「${app.name}」？此操作不可撤销。`);
   if (!ok) return;
-  await API.deleteApp(app.id);
+  try {
+    await API.deleteApp(app.id);
+  } catch (e) {
+    toast(`删除失败：${e.message || e}`, "err");
+    return;
+  }
   await refresh();
   renderAppEditorList();
   toast(`已删除 ${app.name}`, "ok");
@@ -86,7 +91,7 @@ export function openAppEditor(id) {
   const form = $("#appEditorForm");
   form.reset();
   $("#appEditorMsg").textContent = "";
-  ["fName", "fCommand"].forEach((fid) => { $(`#${fid}`).nextElementSibling && ($("#appEditorForm").querySelector(`[data-error-for="${fid}"]`).textContent = ""); });
+  $$("#appEditorForm [data-error-for]").forEach((n) => (n.textContent = ""));
   if (id) {
     const a = store.apps.find((x) => x.id === id);
     if (!a) return;
