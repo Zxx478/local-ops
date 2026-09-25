@@ -278,15 +278,21 @@ class ProcessManager:
                 stderr=subprocess.STDOUT,
                 creationflags=CREATE_NO_WINDOW,
             )
-        except Exception:
+        finally:
+            # 子进程已继承日志句柄；父进程立即关闭自己的副本，避免长期运行句柄泄漏
             logf.close()
-            raise
+
+        try:
+            ctime = psutil.Process(proc.pid).create_time()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+            # 批处理命令可能瞬间退出：退化为启动时刻（下次 _alive 自然判为未运行）
+            ctime = time.time()
 
         rt = {
             "pid": proc.pid,
             "token": token,
             "started_at": int(time.time()),
-            "create_time": psutil.Process(proc.pid).create_time(),
+            "create_time": ctime,
         }
         with self.lock:
             self.runtime[app_id] = rt
