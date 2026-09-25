@@ -1,4 +1,4 @@
-// api.js — 与后端 server.py 通信的客户端
+// api.js — 与后端（run.py / app.py）通信的客户端
 // 约定接口（与 README 描述的功能一一对应）：
 //   GET    /api/health                  健康检查（不枚举进程）
 //   GET    /api/state                   实时状态快照（后端带 2.2s TTL 缓存）
@@ -20,25 +20,40 @@ const API_BASE = "";
 
 export const api = {
   mode: "live", // 'live' | 'demo'
-  _demoWarned: false,
 };
 
 async function request(path, opts = {}) {
+  const { headers = {}, ...rest } = opts;
+  // FormData 必须交由浏览器自动生成 multipart 边界，显式设置 Content-Type 会导致上传失败
+  const finalHeaders = { ...headers };
+  if (typeof rest.body === "string" && !finalHeaders["Content-Type"]) {
+    finalHeaders["Content-Type"] = "application/json";
+  }
+  let res;
   try {
-    const res = await fetch(API_BASE + path, {
-      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-      ...opts,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const ct = res.headers.get("content-type") || "";
-    return ct.includes("application/json") ? await res.json() : await res.text();
+    res = await fetch(API_BASE + path, { ...rest, headers: finalHeaders });
   } catch (err) {
-    if (api.mode !== "demo") {
-      api.mode = "demo";
-      // 首次降级时由调用方决定是否提示
-    }
+    enterDemo(err);
     throw err;
   }
+  if (!res.ok) {
+    // 透传后端返回的 {error: "..."}，便于界面给出具体原因（如只读模式）
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body && body.error) detail = body.error;
+    } catch { /* 非 JSON 响应则保留 HTTP 状态码 */ }
+    const err = new Error(detail);
+    err.status = res.status;
+    throw err;
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? await res.json() : await res.text();
+}
+
+/** 请求失败（网络层/后端不可达）时降级为演示模式 */
+function enterDemo() {
+  api.mode = "demo";
 }
 
 /* ---------------- 演示数据 ---------------- */
@@ -62,6 +77,11 @@ let _demo = null;
 function demo() {
   if (!_demo) _demo = seedDemo();
   return _demo;
+}
+
+/** 深拷贝演示快照，避免调用方直接改动种子数据 */
+function cloneDemo() {
+  return JSON.parse(JSON.stringify(demo()));
 }
 
 function jitter(v, amp, min = 0, max = 100) {
@@ -93,10 +113,10 @@ export const API = {
       const d = demo();
       d.kpis.cpu = jitter(d.kpis.cpu, 10);
       d.kpis.mem = jitter(d.kpis.mem, 6);
-      return JSON.parse(JSON.stringify(d));
+      return cloneDemo();
     }
     try { return await request("/api/state"); }
-    catch { api.mode = "demo"; return JSON.parse(JSON.stringify(demo())); }
+    catch { api.mode = "demo"; return cloneDemo(); }
   },
 
   async startApp(id) {
